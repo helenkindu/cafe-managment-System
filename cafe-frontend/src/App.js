@@ -7,13 +7,16 @@ import CashierDashboard from './components/Cashier/CashierDashboard';
 import CashierAuthModal from './components/Cashier/CashierAuthModal';
 import BaristaDashboard from './components/Barista/BaristaDashboard';
 import KitchenDashboard from './components/Kitchen/KitchenDashboard';
+import PreparedItemsDashboard from './components/prepared-item/PreparedItemsDashboard';
 import NotificationBanner from './components/NotificationBanner';
 import { 
   getWaiters, addWaiter, deleteWaiter, 
   getCategories, addCategory, deleteCategory, 
   getProducts, addProduct, deleteProduct, 
   getOrders, createOrder, approveOrder, cancelOrder, updateOrderItemStatus,
-  getSetting, updateSetting
+  getSetting, updateSetting,
+  // Prepared Items API functions
+  getPreparedItems, addPreparedItem, updatePreparedItem, deletePreparedItem, updatePreparedItemQuantity, seedPreparedItems
 } from './services/api';
 
 const theme = createTheme({
@@ -35,6 +38,7 @@ function App() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [preparedItems, setPreparedItems] = useState([]);
 
   const [notification, setNotification] = useState(null);
 
@@ -53,11 +57,12 @@ function App() {
   // Refresh all state from backend
   const loadData = useCallback(async () => {
     try {
-      const [wRes, cRes, pRes, oRes] = await Promise.all([
+      const [wRes, cRes, pRes, oRes, piRes] = await Promise.all([
         getWaiters(),
         getCategories(),
         getProducts(),
-        getOrders()
+        getOrders(),
+        getPreparedItems()
       ]);
 
       setWaiters(wRes.data);
@@ -68,6 +73,7 @@ function App() {
       setCategories(cRes.data);
       setProducts(pRes.data);
       setOrders(oRes.data);
+      setPreparedItems(piRes.data);
     } catch (err) {
       console.error('Error loading cafe data:', err);
     }
@@ -109,7 +115,7 @@ function App() {
     }
   };
 
-  // Handler: Add Waiter
+  // ---------- WAITER HANDLERS ----------
   const handleAddWaiter = async (data) => {
     try {
       await addWaiter(data);
@@ -119,7 +125,6 @@ function App() {
     }
   };
 
-  // Handler: Delete Waiter
   const handleDeleteWaiter = async (id) => {
     try {
       await deleteWaiter(id);
@@ -129,7 +134,7 @@ function App() {
     }
   };
 
-  // Handler: Add Category
+  // ---------- CATEGORY HANDLERS ----------
   const handleAddCategory = async (data) => {
     try {
       await addCategory(data);
@@ -139,7 +144,6 @@ function App() {
     }
   };
 
-  // Handler: Delete Category
   const handleDeleteCategory = async (id) => {
     try {
       await deleteCategory(id);
@@ -149,7 +153,7 @@ function App() {
     }
   };
 
-  // Handler: Add Product
+  // ---------- PRODUCT HANDLERS ----------
   const handleAddProduct = async (data) => {
     try {
       await addProduct(data);
@@ -159,7 +163,6 @@ function App() {
     }
   };
 
-  // Handler: Delete Product
   const handleDeleteProduct = async (id) => {
     try {
       await deleteProduct(id);
@@ -169,7 +172,69 @@ function App() {
     }
   };
 
-  // Handler: Submit Order (Waiter)
+  // ---------- PREPARED ITEMS HANDLERS ----------
+  const handleAddPreparedItem = async (data) => {
+    try {
+      await addPreparedItem(data);
+      loadData();
+      setNotification({
+        waiterName: 'System',
+        message: `✅ Prepared item "${data.name}" added successfully!`
+      });
+    } catch (err) {
+      alert('Failed to add prepared item');
+    }
+  };
+
+  const handleUpdatePreparedItem = async (id, data) => {
+    try {
+      await updatePreparedItem(id, data);
+      loadData();
+      setNotification({
+        waiterName: 'System',
+        message: `✅ Prepared item updated successfully!`
+      });
+    } catch (err) {
+      alert('Failed to update prepared item');
+    }
+  };
+
+  const handleDeletePreparedItem = async (id) => {
+    try {
+      await deletePreparedItem(id);
+      loadData();
+      setNotification({
+        waiterName: 'System',
+        message: `🗑️ Prepared item deleted successfully!`
+      });
+    } catch (err) {
+      alert('Failed to delete prepared item');
+    }
+  };
+
+  const handleUpdatePreparedItemQuantity = async (id, quantity, action) => {
+    try {
+      await updatePreparedItemQuantity(id, quantity, action);
+      loadData();
+    } catch (err) {
+      alert('Failed to update quantity');
+    }
+  };
+
+  const handleSeedPreparedItems = async () => {
+    try {
+      await seedPreparedItems();
+      loadData();
+      setNotification({
+        waiterName: 'System',
+        message: `🌱 Sample prepared items seeded successfully!`
+      });
+    } catch (err) {
+      alert('Failed to seed prepared items');
+    }
+  };
+
+  // ---------- ORDER HANDLERS ----------
   const handleSubmitOrder = async (orderData) => {
     try {
       await createOrder(orderData);
@@ -180,7 +245,6 @@ function App() {
     }
   };
 
-  // Handler: Approve Order (Cashier)
   const handleApproveOrder = async (orderId) => {
     try {
       await approveOrder(orderId);
@@ -190,7 +254,6 @@ function App() {
     }
   };
 
-  // Handler: Cancel Order (Cashier - Only allowed before dispatch)
   const handleCancelOrder = async (orderId) => {
     try {
       await cancelOrder(orderId);
@@ -200,13 +263,11 @@ function App() {
     }
   };
 
-  // Handler: Update Item Status (Barista / Kitchen Chef)
   const handleUpdateItemStatus = async (orderId, itemId, dept, isReady) => {
     try {
       const res = await updateOrderItemStatus(orderId, itemId, dept, isReady);
       const updatedOrder = res.data.order;
 
-      // Trigger Waiter notification
       setNotification({
         waiterName: updatedOrder.waiterName,
         message: `Order #${updatedOrder.id} for ${updatedOrder.tableNumber} (${dept === 'barista' ? '☕ Barista Drinks' : '🍳 Kitchen Food'}) has been marked READY!`
@@ -311,6 +372,18 @@ function App() {
             <KitchenDashboard 
               orders={orders} 
               onUpdateItemStatus={handleUpdateItemStatus} 
+            />
+          )}
+
+          {/* Prepared Items Dashboard - Accessible from Navbar */}
+          {activeRole === 'prepared-items' && (
+            <PreparedItemsDashboard 
+              items={preparedItems}
+              onAddItem={handleAddPreparedItem}
+              onUpdateItem={handleUpdatePreparedItem}
+              onDeleteItem={handleDeletePreparedItem}
+              onUpdateQuantity={handleUpdatePreparedItemQuantity}
+              onSeedItems={handleSeedPreparedItems}
             />
           )}
         </Box>

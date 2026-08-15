@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { 
   AdminPanelSettings, LocalDining, PointOfSale, FreeBreakfast, 
-  RestaurantMenu, Person, Lock 
+  RestaurantMenu, Person, Lock, BakeryDining 
 } from '@mui/icons-material';
 
 function Navbar({ 
@@ -30,7 +30,8 @@ function Navbar({
       isLocked: !isCashierUnlocked 
     },
     { id: 'barista', label: 'Barista (Drinks)', icon: <FreeBreakfast sx={{ mr: 1 }} />, badge: pendingBaristaCount },
-    { id: 'kitchen', label: 'Kitchen Chef', icon: <LocalDining sx={{ mr: 1 }} />, badge: pendingKitchenCount }
+    { id: 'kitchen', label: 'Kitchen Chef', icon: <LocalDining sx={{ mr: 1 }} />, badge: pendingKitchenCount },
+    { id: 'prepared-items', label: 'Prepared Items', icon: <BakeryDining sx={{ mr: 1 }} /> }
   ];
 
   const selectedWaiter = waiters.find(w => w.id === selectedWaiterId);
@@ -56,13 +57,14 @@ function Navbar({
               sx={{
                 color: activeRole === role.id ? '#fff' : '#cbd5e1',
                 backgroundColor: activeRole === role.id ? '#3b82f6' : 'transparent',
-                borderColor: '#475569',
+                borderColor: activeRole === role.id ? '#3b82f6' : '#475569',
                 borderRadius: 2,
                 textTransform: 'none',
                 fontWeight: 600,
+                whiteSpace: 'nowrap',
                 '&:hover': {
                   backgroundColor: activeRole === role.id ? '#2563eb' : 'rgba(255,255,255,0.08)',
-                  borderColor: '#64748b'
+                  borderColor: activeRole === role.id ? '#2563eb' : '#64748b'
                 }
               }}
             >

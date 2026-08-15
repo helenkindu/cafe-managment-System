@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { Sequelize, DataTypes } = require('sequelize');
+const { Sequelize, DataTypes, Op } = require('sequelize');
 const cors = require('cors');
 const path = require('path');
 const mysql = require('mysql2/promise');
@@ -17,7 +17,6 @@ async function ensureDatabaseExists() {
   const dbHost = process.env.DB_HOST;
   const dbPort = process.env.DB_PORT || 3306;
 
-  // First, connect without specifying a database
   const connection = await mysql.createConnection({
     host: dbHost,
     port: dbPort,
@@ -25,7 +24,6 @@ async function ensureDatabaseExists() {
     password: dbPassword
   });
 
-  // Check if database exists
   const [rows] = await connection.query(
     `SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '${dbName}'`
   );
@@ -44,10 +42,8 @@ async function ensureDatabaseExists() {
 // ---------- CONNECT TO MYSQL USING ENV VARIABLES ----------
 async function initializeSequelize() {
   try {
-    // First, ensure database exists
     await ensureDatabaseExists();
 
-    // Now connect with the database
     const sequelize = new Sequelize(
       process.env.DB_NAME,
       process.env.DB_USER,
@@ -81,11 +77,8 @@ let sequelize;
 initializeSequelize()
   .then((seq) => {
     sequelize = seq;
-    // Define models after sequelize is initialized
     defineModels(sequelize);
-    // Setup routes
     setupRoutes(sequelize);
-    // Start server
     startServer(sequelize);
   })
   .catch(err => {
@@ -140,18 +133,35 @@ function defineModels(sequelize) {
     value: { type: DataTypes.STRING, allowNull: false }
   }, { timestamps: true });
 
-  // Relationships
-  Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'category' });
+  // ---------- PREPARED ITEMS MODEL ----------
+  global.PreparedItem = sequelize.define('PreparedItem', {
+    id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
+    name: { type: DataTypes.STRING, allowNull: false },
+    description: DataTypes.TEXT,
+    price: { type: DataTypes.FLOAT, allowNull: false },
+    quantity: { type: DataTypes.INTEGER, defaultValue: 0 },
+    unit: { type: DataTypes.STRING, defaultValue: 'piece' },
+    image: DataTypes.STRING,
+    isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true },
+    preparationDate: DataTypes.DATE,
+    expiryDate: DataTypes.DATE
+  }, { timestamps: true });
+
+  // ---------- RELATIONSHIPS ----------
+  Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'categoryInfo' });
   Category.hasMany(Product, { foreignKey: 'categoryId' });
+  
+  PreparedItem.belongsTo(Category, { foreignKey: 'categoryId', as: 'categoryInfo' });
+  Category.hasMany(PreparedItem, { foreignKey: 'categoryId' });
 
   console.log('✅ Models defined successfully');
 }
 
 // ---------- SETUP ROUTES ----------
 function setupRoutes(sequelize) {
-  const { Waiter, Category, Product, Order, CafeSetting } = global;
+  const { Waiter, Category, Product, Order, CafeSetting, PreparedItem } = global;
 
-  // 1. WAITER ENDPOINTS
+  // ============ WAITER ENDPOINTS ============
   app.get('/api/waiters', async (req, res) => {
     try {
       const waiters = await Waiter.findAll({ order: [['id', 'ASC']] });
@@ -189,7 +199,7 @@ function setupRoutes(sequelize) {
     }
   });
 
-  // 2. CATEGORY ENDPOINTS
+  // ============ CATEGORY ENDPOINTS ============
   app.get('/api/categories', async (req, res) => {
     try {
       const categories = await Category.findAll({ order: [['id', 'ASC']] });
@@ -208,6 +218,18 @@ function setupRoutes(sequelize) {
     }
   });
 
+  app.put('/api/categories/:id', async (req, res) => {
+    try {
+      const category = await Category.findByPk(req.params.id);
+      if (!category) return res.status(404).json({ error: 'Category not found' });
+      
+      await category.update(req.body);
+      res.json(category);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   app.delete('/api/categories/:id', async (req, res) => {
     try {
       await Category.destroy({ where: { id: req.params.id } });
@@ -217,7 +239,7 @@ function setupRoutes(sequelize) {
     }
   });
 
-  // 3. PRODUCT ENDPOINTS
+  // ============ PRODUCT ENDPOINTS ============
   app.get('/api/products', async (req, res) => {
     try {
       const { categoryId } = req.query;
@@ -225,7 +247,7 @@ function setupRoutes(sequelize) {
       if (categoryId) where.categoryId = categoryId;
       const products = await Product.findAll({ 
         where, 
-        include: [{ model: Category, as: 'category' }], 
+        include: [{ model: Category, as: 'categoryInfo' }], 
         order: [['id', 'ASC']] 
       });
       res.json(products);
@@ -262,7 +284,7 @@ function setupRoutes(sequelize) {
     }
   });
 
-  // 4. ORDER ENDPOINTS
+  // ============ ORDER ENDPOINTS ============
   app.get('/api/orders', async (req, res) => {
     try {
       const { status, waiterId } = req.query;
@@ -281,11 +303,32 @@ function setupRoutes(sequelize) {
     try {
       const { waiterId, waiterName, tableNumber, items, totalPrice } = req.body;
 
-      const processedItems = items.map(item => ({
-        ...item,
-        targetDept: item.targetDept || 'kitchen',
-        itemStatus: 'pending'
-      }));
+      // Check if any items are prepared items and reduce quantity
+      const processedItems = [];
+      for (const item of items) {
+        if (item.isPrepared) {
+          const preparedItem = await PreparedItem.findOne({ 
+            where: { name: item.name, isAvailable: true }
+          });
+          
+          if (preparedItem) {
+            if (preparedItem.quantity < item.quantity) {
+              return res.status(400).json({ 
+                error: `Not enough ${item.name} in stock. Available: ${preparedItem.quantity}`
+              });
+            }
+            await preparedItem.update({ 
+              quantity: preparedItem.quantity - item.quantity 
+            });
+          }
+        }
+        
+        processedItems.push({
+          ...item,
+          targetDept: item.targetDept || 'kitchen',
+          itemStatus: 'pending'
+        });
+      }
 
       const order = await Order.create({
         waiterId,
@@ -376,7 +419,267 @@ function setupRoutes(sequelize) {
     }
   });
 
-  // 5. SETTINGS ENDPOINTS
+  // ============ PREPARED ITEMS ENDPOINTS ============
+  
+  // Get all prepared items
+  app.get('/api/prepared-items', async (req, res) => {
+    try {
+      const { categoryId, targetDept } = req.query;
+      const where = {};
+      if (categoryId) where.categoryId = categoryId;
+      
+      const items = await PreparedItem.findAll({ 
+        where,
+        include: [{ model: Category, as: 'categoryInfo' }],
+        order: [['name', 'ASC']] 
+      });
+      
+      // If targetDept filter is applied, filter after join
+      let result = items;
+      if (targetDept) {
+        result = items.filter(item => item.categoryInfo && item.categoryInfo.targetDept === targetDept);
+      }
+      
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get a single prepared item
+  app.get('/api/prepared-items/:id', async (req, res) => {
+    try {
+      const item = await PreparedItem.findByPk(req.params.id, {
+        include: [{ model: Category, as: 'categoryInfo' }]
+      });
+      if (!item) return res.status(404).json({ error: 'Item not found' });
+      res.json(item);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Create a new prepared item
+  app.post('/api/prepared-items', async (req, res) => {
+    try {
+      const item = await PreparedItem.create(req.body);
+      const created = await PreparedItem.findByPk(item.id, {
+        include: [{ model: Category, as: 'categoryInfo' }]
+      });
+      res.status(201).json(created);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Update a prepared item
+  app.put('/api/prepared-items/:id', async (req, res) => {
+    try {
+      const item = await PreparedItem.findByPk(req.params.id);
+      if (!item) return res.status(404).json({ error: 'Item not found' });
+      
+      await item.update(req.body);
+      const updated = await PreparedItem.findByPk(req.params.id, {
+        include: [{ model: Category, as: 'categoryInfo' }]
+      });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Update quantity (for when items are taken/sold)
+  app.put('/api/prepared-items/:id/quantity', async (req, res) => {
+    try {
+      const { quantity, action } = req.body;
+      const item = await PreparedItem.findByPk(req.params.id);
+      if (!item) return res.status(404).json({ error: 'Item not found' });
+      
+      let newQuantity = item.quantity;
+      if (action === 'add') newQuantity += quantity;
+      else if (action === 'remove') newQuantity -= quantity;
+      else if (action === 'set') newQuantity = quantity;
+      
+      if (newQuantity < 0) newQuantity = 0;
+      
+      await item.update({ quantity: newQuantity });
+      const updated = await PreparedItem.findByPk(req.params.id, {
+        include: [{ model: Category, as: 'categoryInfo' }]
+      });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Delete a prepared item
+  app.delete('/api/prepared-items/:id', async (req, res) => {
+    try {
+      const item = await PreparedItem.findByPk(req.params.id);
+      if (!item) return res.status(404).json({ error: 'Item not found' });
+      
+      await item.destroy();
+      res.json({ message: 'Item deleted successfully' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Seed prepared items with categories
+  app.post('/api/prepared-items/seed', async (req, res) => {
+    try {
+      // First, get or create categories
+      const [breadCategory, cakeCategory, pastryCategory, snackCategory, drinkCategory] = await Promise.all([
+        Category.findOrCreate({ where: { name: 'Bread', defaults: { icon: '🍞', targetDept: 'kitchen' } } }),
+        Category.findOrCreate({ where: { name: 'Cake', defaults: { icon: '🎂', targetDept: 'kitchen' } } }),
+        Category.findOrCreate({ where: { name: 'Pastry', defaults: { icon: '🥐', targetDept: 'kitchen' } } }),
+        Category.findOrCreate({ where: { name: 'Snack', defaults: { icon: '🍿', targetDept: 'kitchen' } } }),
+        Category.findOrCreate({ where: { name: 'Drink', defaults: { icon: '🥤', targetDept: 'barista' } } })
+      ]);
+
+      const items = [
+        // Breads (Kitchen)
+        { name: 'White Bread', price: 50, quantity: 10, unit: 'piece', categoryId: breadCategory[0].id },
+        { name: 'Brown Bread', price: 60, quantity: 8, unit: 'piece', categoryId: breadCategory[0].id },
+        { name: 'Baguette', price: 80, quantity: 5, unit: 'piece', categoryId: breadCategory[0].id },
+        { name: 'Sourdough', price: 90, quantity: 4, unit: 'piece', categoryId: breadCategory[0].id },
+        { name: 'Rye Bread', price: 70, quantity: 6, unit: 'piece', categoryId: breadCategory[0].id },
+        
+        // Cakes (Kitchen)
+        { name: 'Chocolate Cake', price: 150, quantity: 6, unit: 'slice', categoryId: cakeCategory[0].id },
+        { name: 'Vanilla Cake', price: 120, quantity: 8, unit: 'slice', categoryId: cakeCategory[0].id },
+        { name: 'Red Velvet Cake', price: 180, quantity: 4, unit: 'slice', categoryId: cakeCategory[0].id },
+        { name: 'Carrot Cake', price: 140, quantity: 5, unit: 'slice', categoryId: cakeCategory[0].id },
+        { name: 'Cheesecake', price: 160, quantity: 6, unit: 'slice', categoryId: cakeCategory[0].id },
+        
+        // Pastries (Kitchen)
+        { name: 'Croissant', price: 70, quantity: 12, unit: 'piece', categoryId: pastryCategory[0].id },
+        { name: 'Danish Pastry', price: 90, quantity: 8, unit: 'piece', categoryId: pastryCategory[0].id },
+        { name: 'Pain au Chocolat', price: 95, quantity: 6, unit: 'piece', categoryId: pastryCategory[0].id },
+        { name: 'Cinnamon Roll', price: 80, quantity: 10, unit: 'piece', categoryId: pastryCategory[0].id },
+        
+        // Snacks (Kitchen)
+        { name: 'Samosa', price: 40, quantity: 20, unit: 'piece', categoryId: snackCategory[0].id },
+        { name: 'Spring Roll', price: 50, quantity: 15, unit: 'piece', categoryId: snackCategory[0].id },
+        { name: 'Puff Puff', price: 30, quantity: 25, unit: 'piece', categoryId: snackCategory[0].id },
+        
+        // Drinks (Barista)
+        { name: 'Fresh Juice', price: 100, quantity: 10, unit: 'glass', categoryId: drinkCategory[0].id },
+        { name: 'Smoothie', price: 120, quantity: 8, unit: 'glass', categoryId: drinkCategory[0].id },
+        { name: 'Milkshake', price: 110, quantity: 6, unit: 'glass', categoryId: drinkCategory[0].id },
+        { name: 'Iced Tea', price: 80, quantity: 12, unit: 'glass', categoryId: drinkCategory[0].id },
+        { name: 'Lemonade', price: 90, quantity: 10, unit: 'glass', categoryId: drinkCategory[0].id }
+      ];
+      
+      const created = await PreparedItem.bulkCreate(items);
+      
+      // Get all created items with their categories
+      const allItems = await PreparedItem.findAll({
+        where: { id: created.map(item => item.id) },
+        include: [{ model: Category, as: 'categoryInfo' }]
+      });
+      
+      res.status(201).json({ 
+        message: `${created.length} items seeded successfully`, 
+        items: allItems,
+        categories: {
+          bread: breadCategory[0],
+          cake: cakeCategory[0],
+          pastry: pastryCategory[0],
+          snack: snackCategory[0],
+          drink: drinkCategory[0]
+        }
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ============ DASHBOARD ENDPOINTS ============
+  
+  // Get dashboard overview
+  app.get('/api/dashboard/overview', async (req, res) => {
+    try {
+      const [totalOrders, pendingOrders, completedOrders, preparedItems, lowStockItems] = await Promise.all([
+        Order.count(),
+        Order.count({ where: { status: 'PENDING_PAYMENT' } }),
+        Order.count({ where: { status: 'COMPLETED' } }),
+        PreparedItem.count({ where: { isAvailable: true } }),
+        PreparedItem.findAll({ 
+          where: { quantity: { [Op.lt]: 5 }, isAvailable: true },
+          include: [{ model: Category, as: 'categoryInfo' }],
+          attributes: ['id', 'name', 'quantity']
+        })
+      ]);
+
+      const categorySummary = await PreparedItem.findAll({
+        attributes: [
+          'categoryId',
+          [sequelize.fn('SUM', sequelize.col('quantity')), 'totalQuantity']
+        ],
+        group: ['categoryId']
+      });
+
+      // Get category names for the summary
+      const categoryIds = categorySummary.map(item => item.categoryId);
+      const categories = await Category.findAll({
+        where: { id: categoryIds },
+        attributes: ['id', 'name', 'targetDept']
+      });
+
+      const summaryWithNames = categorySummary.map(summary => {
+        const cat = categories.find(c => c.id === summary.categoryId);
+        return {
+          categoryName: cat ? cat.name : 'Unknown',
+          targetDept: cat ? cat.targetDept : 'unknown',
+          totalQuantity: summary.get('totalQuantity')
+        };
+      });
+
+      res.json({
+        stats: {
+          totalOrders,
+          pendingOrders,
+          completedOrders,
+          preparedItems,
+          lowStockItems: lowStockItems.length
+        },
+        lowStock: lowStockItems,
+        categorySummary: summaryWithNames
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get prepared items summary grouped by category
+  app.get('/api/dashboard/prepared-items-summary', async (req, res) => {
+    try {
+      const items = await PreparedItem.findAll({
+        where: { isAvailable: true },
+        include: [{ model: Category, as: 'categoryInfo' }],
+        attributes: [
+          'categoryId',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+          [sequelize.fn('SUM', sequelize.col('quantity')), 'totalQuantity']
+        ],
+        group: ['categoryId', 'categoryInfo.id']
+      });
+      
+      const result = items.map(item => ({
+        categoryName: item.categoryInfo ? item.categoryInfo.name : 'Unknown',
+        targetDept: item.categoryInfo ? item.categoryInfo.targetDept : 'unknown',
+        count: item.get('count'),
+        totalQuantity: item.get('totalQuantity')
+      }));
+      
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============ SETTINGS ENDPOINTS ============
   app.get('/api/settings/:key', async (req, res) => {
     try {
       const setting = await CafeSetting.findOne({ where: { key: req.params.key } });
@@ -403,6 +706,15 @@ function setupRoutes(sequelize) {
     }
   });
 
+  // ============ HEALTH CHECK ============
+  app.get('/api/health', (req, res) => {
+    res.json({ 
+      status: 'OK', 
+      database: process.env.DB_NAME,
+      timestamp: new Date().toISOString()
+    });
+  });
+
   console.log('✅ Routes setup complete');
 }
 
@@ -410,9 +722,8 @@ function setupRoutes(sequelize) {
 function startServer(sequelize) {
   const PORT = process.env.PORT || 5000;
   
-  // Sync models and start server
   sequelize.sync({ alter: true }).then(() => {
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Cafe Backend running at http://localhost:${PORT}`);
       console.log(`📊 Database: ${process.env.DB_NAME}`);
       console.log('✨ All systems ready!');
@@ -421,12 +732,3 @@ function startServer(sequelize) {
     console.error('❌ Error syncing database:', err);
   });
 }
-
-// ---------- SIMPLE TEST ROUTE ----------
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    database: process.env.DB_NAME,
-    timestamp: new Date().toISOString()
-  });
-});
