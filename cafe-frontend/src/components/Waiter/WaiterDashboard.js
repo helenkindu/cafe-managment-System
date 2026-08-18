@@ -13,17 +13,15 @@ import {
 
 function WaiterDashboard({ 
   waiters, 
-  selectedWaiterId, 
-  setSelectedWaiterId,
+  selectedWaiterId,   // automatically set by App
   categories, 
   products, 
-  myOrders, 
+  myOrders,           // already filtered by waiterId
   onSubmitOrder 
 }) {
   const [selectedCatId, setSelectedCatId] = useState(categories[0]?.id || 'all');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Cart state
   const [cart, setCart] = useState([]);
   const [tableNumber, setTableNumber] = useState('Table 1');
   const [cartOpen, setCartOpen] = useState(false);
@@ -66,7 +64,7 @@ function WaiterDashboard({
 
   const handlePlaceOrder = () => {
     if (!selectedWaiterId) {
-      alert('Please select your Waiter ID first!');
+      alert('No waiter selected! Please log in again.');
       return;
     }
     if (!tableNumber) {
@@ -97,7 +95,6 @@ function WaiterDashboard({
     setCartOpen(false);
   };
 
-  // Filtered products
   const filteredProducts = products.filter(p => {
     const matchesCat = selectedCatId === 'all' || p.categoryId === selectedCatId;
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -107,39 +104,24 @@ function WaiterDashboard({
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Waiter Selection Header */}
+      {/* Header – no dropdown, just show logged‑in waiter */}
       <Paper elevation={2} sx={{ p: 2, mb: 3, borderRadius: 3, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2, background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <FormControl size="small" sx={{ minWidth: 220, bgcolor: '#fff', borderRadius: 1.5 }}>
-            <InputLabel>Active Waiter Profile</InputLabel>
-            <Select
-              value={selectedWaiterId || ''}
-              onChange={(e) => setSelectedWaiterId(e.target.value)}
-              label="Active Waiter Profile"
-            >
-              {waiters.map(w => (
-                <MenuItem key={w.id} value={w.id}>
-                  👤 {w.name} ({w.code})
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
           {activeWaiter ? (
-            <Chip 
-              label={`Logged in as: ${activeWaiter.name} (${activeWaiter.code})`} 
-              color="primary" 
-              sx={{ fontWeight: 'bold', fontSize: '0.9rem', py: 2 }} 
+            <Chip
+              label={`👤 Logged in as: ${activeWaiter.name} (${activeWaiter.code})`}
+              color="primary"
+              sx={{ fontWeight: 'bold', fontSize: '0.9rem', py: 2 }}
             />
           ) : (
-            <Alert severity="warning" sx={{ py: 0 }}>Please select your Waiter ID to place orders</Alert>
+            <Alert severity="warning" sx={{ py: 0 }}>No waiter assigned – please contact admin</Alert>
           )}
         </Box>
 
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Button 
-            variant="outlined" 
-            color="info" 
+          <Button
+            variant="outlined"
+            color="info"
             startIcon={<ReceiptLong />}
             onClick={() => setOrdersModalOpen(true)}
             sx={{ borderRadius: 2, fontWeight: 'bold' }}
@@ -147,9 +129,9 @@ function WaiterDashboard({
             My Orders ({myOrders.length})
           </Button>
 
-          <Button 
-            variant="contained" 
-            color="warning" 
+          <Button
+            variant="contained"
+            color="warning"
             startIcon={
               <Badge badgeContent={getTotalItemsCount()} color="error">
                 <ShoppingCart />
@@ -201,12 +183,11 @@ function WaiterDashboard({
       <Grid container spacing={3}>
         {filteredProducts.map(prod => (
           <Grid item xs={12} sm={6} md={4} key={prod.id}>
-            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, transition: '0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
+            <Card sx={{ height: '10%', display: 'flex', flexDirection: 'column', borderRadius: 3, transition: '0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
               <CardMedia 
                 component="img" 
                 height="170" 
-                image={prod.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'} 
-                alt={prod.name} 
+image={prod.image ? `http://localhost:5000${prod.image}` : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'}                alt={prod.name} 
               />
               <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <Box>
@@ -252,7 +233,6 @@ function WaiterDashboard({
           </Box>
           <Divider sx={{ mb: 2 }} />
 
-          {/* Table Selector */}
           <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: '#f8fafc' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <TableRestaurant color="primary" />

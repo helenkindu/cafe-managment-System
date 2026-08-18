@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   AppBar, Toolbar, Typography, Box, Button, Select, MenuItem, 
   FormControl, InputLabel, Chip
 } from '@mui/material';
 import { 
   AdminPanelSettings, LocalDining, PointOfSale, FreeBreakfast, 
-  RestaurantMenu, Person, Lock, BakeryDining 
+  RestaurantMenu, Person, BakeryDining, Logout 
 } from '@mui/icons-material';
 
 function Navbar({ 
@@ -17,9 +17,12 @@ function Navbar({
   pendingCashierCount,
   pendingBaristaCount,
   pendingKitchenCount,
-  isCashierUnlocked
+  isAuthenticated,
+  user,
+  onLogout,
+  onOpenLogin
 }) {
-  const roles = [
+  const allRoles = [
     { id: 'admin', label: 'Admin (Manager)', icon: <AdminPanelSettings sx={{ mr: 1 }} /> },
     { id: 'waiter', label: 'Waiter View', icon: <Person sx={{ mr: 1 }} /> },
     { 
@@ -27,89 +30,94 @@ function Navbar({
       label: 'Cashier', 
       icon: <PointOfSale sx={{ mr: 1 }} />, 
       badge: pendingCashierCount,
-      isLocked: !isCashierUnlocked 
     },
     { id: 'barista', label: 'Barista (Drinks)', icon: <FreeBreakfast sx={{ mr: 1 }} />, badge: pendingBaristaCount },
     { id: 'kitchen', label: 'Kitchen Chef', icon: <LocalDining sx={{ mr: 1 }} />, badge: pendingKitchenCount },
     { id: 'prepared-items', label: 'Prepared Items', icon: <BakeryDining sx={{ mr: 1 }} /> }
   ];
 
-  const selectedWaiter = waiters.find(w => w.id === selectedWaiterId);
+  // Only show the role that matches the logged‑in user
+  const visibleRoles = isAuthenticated && user?.role
+    ? allRoles.filter(role => role.id === user.role)
+    : [];
 
   return (
     <AppBar position="sticky" sx={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', boxShadow: 3 }}>
       <Toolbar sx={{ flexWrap: 'wrap', gap: 2, py: 1 }}>
-        {/* Brand */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
+        {/* Brand with double-click to open login */}
+        <Box 
+          sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2, cursor: 'pointer' }}
+          onDoubleClick={onOpenLogin}
+          title={isAuthenticated ? `Logged in as ${user?.name} (${user?.role})` : 'Double-click to login'}
+        >
           <RestaurantMenu sx={{ fontSize: 32, color: '#f59e0b' }} />
           <Typography variant="h6" sx={{ fontWeight: 'bold', letterSpacing: 0.5, color: '#fff' }}>
             Artisan Cafe System
           </Typography>
+          {isAuthenticated && (
+            <Chip 
+              label={`${user?.name} (${user?.role})`} 
+              size="small" 
+              sx={{ bgcolor: '#10b981', color: '#fff', fontWeight: 'bold', ml: 1 }} 
+            />
+          )}
         </Box>
 
-        {/* Role Switcher Tabs */}
-        <Box sx={{ display: 'flex', gap: 1, flexGrow: 1, overflowX: 'auto', py: 0.5 }}>
-          {roles.map(role => (
-            <Button
-              key={role.id}
-              variant={activeRole === role.id ? 'contained' : 'outlined'}
-              onClick={() => onSelectRole(role.id)}
-              sx={{
-                color: activeRole === role.id ? '#fff' : '#cbd5e1',
-                backgroundColor: activeRole === role.id ? '#3b82f6' : 'transparent',
-                borderColor: activeRole === role.id ? '#3b82f6' : '#475569',
-                borderRadius: 2,
-                textTransform: 'none',
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-                '&:hover': {
-                  backgroundColor: activeRole === role.id ? '#2563eb' : 'rgba(255,255,255,0.08)',
-                  borderColor: activeRole === role.id ? '#2563eb' : '#64748b'
-                }
-              }}
-            >
-              {role.icon}
-              {role.label}
-              {role.isLocked && <Lock sx={{ fontSize: 16, ml: 0.5, color: '#f59e0b' }} />}
-              {role.badge > 0 && (
-                <Chip 
-                  label={role.badge} 
-                  size="small" 
-                  color="error" 
-                  sx={{ ml: 1, height: 20, fontSize: '0.75rem', fontWeight: 'bold' }} 
-                />
-              )}
-            </Button>
-          ))}
-        </Box>
-
-        {/* Waiter Roster Selector (Active when Waiter Role is selected) */}
-        {activeRole === 'waiter' && (
-          <FormControl size="small" sx={{ minWidth: 180, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 1.5 }}>
-            <InputLabel sx={{ color: '#94a3b8' }}>Select Waiter</InputLabel>
-            <Select
-              value={selectedWaiterId || ''}
-              onChange={(e) => setSelectedWaiterId(e.target.value)}
-              label="Select Waiter"
-              sx={{ color: '#fff', '.MuiSvgIcon-root': { color: '#fff' } }}
-            >
-              {waiters.map(w => (
-                <MenuItem key={w.id} value={w.id}>
-                  👤 {w.name} ({w.code})
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+        {/* Role Switcher Tabs - only the user's role is shown */}
+        {isAuthenticated && (
+          <Box sx={{ display: 'flex', gap: 1, flexGrow: 1, overflowX: 'auto', py: 0.5 }}>
+            {visibleRoles.map(role => (
+              <Button
+                key={role.id}
+                variant={activeRole === role.id ? 'contained' : 'outlined'}
+                onClick={() => onSelectRole(role.id)}
+                sx={{
+                  color: activeRole === role.id ? '#fff' : '#cbd5e1',
+                  backgroundColor: activeRole === role.id ? '#3b82f6' : 'transparent',
+                  borderColor: activeRole === role.id ? '#3b82f6' : '#475569',
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  '&:hover': {
+                    backgroundColor: activeRole === role.id ? '#2563eb' : 'rgba(255,255,255,0.08)',
+                    borderColor: activeRole === role.id ? '#2563eb' : '#64748b'
+                  }
+                }}
+              >
+                {role.icon}
+                {role.label}
+                {role.badge > 0 && (
+                  <Chip 
+                    label={role.badge} 
+                    size="small" 
+                    color="error" 
+                    sx={{ ml: 1, height: 20, fontSize: '0.75rem', fontWeight: 'bold' }} 
+                  />
+                )}
+              </Button>
+            ))}
+          </Box>
         )}
 
-        {/* Active Waiter Indicator Badge */}
-        {activeRole === 'waiter' && selectedWaiter && (
-          <Chip 
-            label={`Active: ${selectedWaiter.name}`} 
-            color="success" 
-            variant="outlined" 
-            sx={{ color: '#4ade80', borderColor: '#4ade80', fontWeight: 'bold' }} 
-          />
+        {/* ❌ Waiter selector and chip are REMOVED */}
+
+        {/* Logout button */}
+        {isAuthenticated && (
+          <Button
+            variant="outlined"
+            color="error"
+            size="small"
+            onClick={onLogout}
+            startIcon={<Logout />}
+            sx={{ 
+              borderColor: '#ef4444', 
+              color: '#ef4444',
+              '&:hover': { borderColor: '#dc2626', color: '#dc2626', backgroundColor: 'rgba(239,68,68,0.1)' }
+            }}
+          >
+            Logout
+          </Button>
         )}
       </Toolbar>
     </AppBar>
