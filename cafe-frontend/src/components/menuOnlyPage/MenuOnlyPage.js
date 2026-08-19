@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import {
   Container, Typography, Paper, Box, Grid, Card, CardContent,
-  CardMedia, Chip, Tabs, Tab, Alert, Grow, Fade
+  CardMedia, Chip, Tabs, Tab, Alert, Grow, Fade, IconButton
 } from '@mui/material';
-import { Inventory, Restaurant, LocalCafe } from '@mui/icons-material';
+import { ArrowBack, Inventory, Restaurant, LocalCafe } from '@mui/icons-material';
 
-function MenuDisplay({ categories, products }) {
+function MenuOnlyPage({ categories, products, onBack }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
 
   const allCategories = categories || [];
@@ -34,72 +34,89 @@ function MenuDisplay({ categories, products }) {
   };
 
   return (
-    <Box sx={{ 
+    <Box sx={{
       minHeight: '100vh',
       background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
       pt: 2,
       pb: 6
     }}>
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        {/* Hero Header */}
-        <Grow in timeout={500}>
+        {/* Header with Back Button */}
+        <Fade in timeout={500}>
           <Paper elevation={0} sx={{
-            p: 5,
+            p: 3,
             mb: 4,
             borderRadius: 4,
             background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
             color: '#fff',
-            textAlign: 'center',
             position: 'relative',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 2
           }}>
             <Box sx={{ position: 'relative', zIndex: 1 }}>
-              <Typography variant="h2" sx={{ fontWeight: 'bold', mb: 1, letterSpacing: 1 }}>
-                🍽️ Our Menu
-              </Typography>
-              <Typography variant="h6" sx={{ color: '#94a3b8', mb: 2 }}>
-                Explore our delicious offerings
-              </Typography>
-              <Chip 
-                label="💡 Double-click the cafe logo to login as staff" 
-                size="medium"
-                sx={{ 
-                  bgcolor: 'rgba(255,255,255,0.1)', 
-                  color: '#94a3b8',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  backdropFilter: 'blur(10px)'
-                }} 
-              />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <IconButton
+                  onClick={onBack}
+                  sx={{
+                    color: '#fff',
+                    bgcolor: 'rgba(255,255,255,0.1)',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
+                  }}
+                >
+                  <ArrowBack />
+                </IconButton>
+                <Box>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                    🍽️ Our Menu
+                  </Typography>
+                  <Typography sx={{ opacity: 0.8 }}>
+                    Explore our delicious offerings
+                  </Typography>
+                </Box>
+              </Box>
             </Box>
-            {/* Decorative elements */}
+            <Chip
+              label={`${products?.length || 0} items`}
+              sx={{
+                bgcolor: 'rgba(255,255,255,0.1)',
+                color: '#fff',
+                border: '1px solid rgba(255,255,255,0.1)',
+                backdropFilter: 'blur(10px)'
+              }}
+            />
+            {/* Decorative circles */}
             <Box sx={{
               position: 'absolute',
-              top: -80,
-              right: -80,
-              width: 300,
-              height: 300,
+              top: -50,
+              right: -50,
+              width: 200,
+              height: 200,
               borderRadius: '50%',
               bgcolor: 'rgba(255,255,255,0.05)',
             }} />
             <Box sx={{
               position: 'absolute',
-              bottom: -100,
-              left: -50,
-              width: 200,
-              height: 200,
+              bottom: -80,
+              left: -30,
+              width: 150,
+              height: 150,
               borderRadius: '50%',
               bgcolor: 'rgba(255,255,255,0.03)',
             }} />
           </Paper>
-        </Grow>
+        </Fade>
 
         {/* Category Tabs */}
         {allCategories.length > 0 && (
           <Fade in timeout={700}>
-            <Paper elevation={0} sx={{ 
-              p: 2, 
-              mb: 3, 
-              borderRadius: 4, 
+            <Paper elevation={0} sx={{
+              p: 2,
+              mb: 3,
+              borderRadius: 4,
               bgcolor: 'rgba(255,255,255,0.9)',
               backdropFilter: 'blur(10px)',
               overflowX: 'auto'
@@ -108,9 +125,9 @@ function MenuDisplay({ categories, products }) {
                 value={selectedCategory || 'all'}
                 onChange={(e, val) => setSelectedCategory(val === 'all' ? null : val)}
                 sx={{
-                  '& .MuiTab-root': { 
-                    fontWeight: 'bold', 
-                    textTransform: 'none', 
+                  '& .MuiTab-root': {
+                    fontWeight: 'bold',
+                    textTransform: 'none',
                     borderRadius: 2,
                     fontSize: '0.9rem',
                     '&.Mui-selected': {
@@ -143,7 +160,7 @@ function MenuDisplay({ categories, products }) {
           </Fade>
         )}
 
-        {/* Menu Items */}
+        {/* Menu Items - WITHOUT Add to Order */}
         {filteredProducts?.length === 0 ? (
           <Alert severity="info" sx={{ borderRadius: 3 }}>
             No menu items available at the moment.
@@ -152,11 +169,11 @@ function MenuDisplay({ categories, products }) {
           <Grid container spacing={3}>
             {Object.values(productsByCategory).map(({ category, products }) => (
               <Grid item xs={12} key={category?.id || 'uncategorized'}>
-                <Typography variant="h5" sx={{ 
-                  fontWeight: 'bold', 
-                  mb: 2, 
-                  display: 'flex', 
-                  alignItems: 'center', 
+                <Typography variant="h5" sx={{
+                  fontWeight: 'bold',
+                  mb: 2,
+                  display: 'flex',
+                  alignItems: 'center',
                   gap: 1,
                   color: '#1a1a2e'
                 }}>
@@ -167,14 +184,14 @@ function MenuDisplay({ categories, products }) {
                   {products.map((product, index) => (
                     <Grid item xs={12} sm={6} md={4} key={product.id}>
                       <Grow in timeout={800 + index * 100}>
-                        <Card sx={{ 
-                          height: '100%', 
-                          display: 'flex', 
-                          flexDirection: 'column', 
-                          borderRadius: 4, 
+                        <Card sx={{
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          borderRadius: 4,
                           boxShadow: '0 10px 40px rgba(0,0,0,0.08)',
                           transition: 'all 0.3s ease',
-                          '&:hover': { 
+                          '&:hover': {
                             transform: 'translateY(-8px)',
                             boxShadow: '0 20px 60px rgba(102, 126, 234, 0.2)'
                           },
@@ -182,9 +199,9 @@ function MenuDisplay({ categories, products }) {
                           bgcolor: 'rgba(255,255,255,0.95)',
                           backdropFilter: 'blur(10px)'
                         }}>
-                          <Box sx={{ 
-                            display: 'flex', 
-                            justifyContent: 'center', 
+                          <Box sx={{
+                            display: 'flex',
+                            justifyContent: 'center',
                             alignItems: 'center',
                             height: 140,
                             width: '100%',
@@ -192,11 +209,11 @@ function MenuDisplay({ categories, products }) {
                             p: 1,
                             flexShrink: 0
                           }}>
-                            <CardMedia 
-                              component="img" 
+                            <CardMedia
+                              component="img"
                               image={getImageUrl(product.image)}
                               alt={product.name}
-                              sx={{ 
+                              sx={{
                                 height: '100%',
                                 width: 'auto',
                                 maxWidth: '100%',
@@ -206,22 +223,24 @@ function MenuDisplay({ categories, products }) {
                               }}
                             />
                           </Box>
-                          
-                          <CardContent sx={{ 
-                            flexGrow: 1, 
-                            display: 'flex', 
+
+                          <CardContent sx={{
+                            flexGrow: 1,
+                            display: 'flex',
                             flexDirection: 'column',
                             p: 2.5,
                             '&:last-child': { pb: 2.5 }
                           }}>
                             <Box sx={{ flexGrow: 1 }}>
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
-                                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1a1a2e' }}>
-                                  {product.name}
-                                </Typography>
-                              </Box>
+                              <Typography variant="h6" sx={{
+                                fontWeight: 'bold',
+                                color: '#1a1a2e',
+                                mb: 0.5
+                              }}>
+                                {product.name}
+                              </Typography>
                               {product.description && (
-                                <Typography variant="body2" color="text.secondary" sx={{ 
+                                <Typography variant="body2" color="text.secondary" sx={{
                                   mb: 1.5,
                                   fontSize: '0.85rem',
                                   display: '-webkit-box',
@@ -235,16 +254,16 @@ function MenuDisplay({ categories, products }) {
                               )}
                             </Box>
 
-                            <Box sx={{ 
-                              display: 'flex', 
-                              justifyContent: 'space-between', 
-                              alignItems: 'center', 
+                            <Box sx={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
                               mt: 1,
                               pt: 1.5,
                               borderTop: '2px solid #f0f0f0'
                             }}>
-                              <Typography variant="h5" sx={{ 
-                                fontWeight: 'bold', 
+                              <Typography variant="h5" sx={{
+                                fontWeight: 'bold',
                                 color: '#667eea',
                                 fontSize: '1.3rem'
                               }}>
@@ -254,7 +273,7 @@ function MenuDisplay({ categories, products }) {
                                 label={product.categoryInfo?.targetDept === 'kitchen' ? '🍳 Kitchen' : '☕ Barista'}
                                 size="small"
                                 variant="outlined"
-                                sx={{ 
+                                sx={{
                                   fontWeight: 'bold',
                                   borderColor: product.categoryInfo?.targetDept === 'kitchen' ? '#f59e0b' : '#3b82f6',
                                   color: product.categoryInfo?.targetDept === 'kitchen' ? '#f59e0b' : '#3b82f6'
@@ -276,4 +295,4 @@ function MenuDisplay({ categories, products }) {
   );
 }
 
-export default MenuDisplay;
+export default MenuOnlyPage;

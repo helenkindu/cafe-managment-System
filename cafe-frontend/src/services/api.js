@@ -21,6 +21,10 @@ export const loginUser = (username, password) => api.post('/auth/login', { usern
 export const getUsers = () => api.get('/auth/users');
 export const updateUser = (id, data) => api.put(`/auth/users/${id}`, data);
 
+// 🔥 NEW: Change password for authenticated user
+export const changePassword = (oldPassword, newPassword) =>
+  api.put('/auth/change-password', { oldPassword, newPassword });
+
 // ---------- WAITER API ----------
 export const getWaiters = () => api.get('/waiters');
 // This endpoint already creates the user on the backend – no separate registration needed

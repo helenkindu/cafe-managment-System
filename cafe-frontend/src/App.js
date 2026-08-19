@@ -9,7 +9,8 @@ import KitchenDashboard from './components/Kitchen/KitchenDashboard';
 import PreparedItemsDashboard from './components/prepared-item/PreparedItemsDashboard';
 import LoginModal from './components/LoginModal/LoginModal';
 import NotificationBanner from './components/NotificationBanner';
-import MenuDisplay from './components/MenuDisplay/MenuDisplay';
+import LandingPage from './components/landingpage/LandingPage';
+import MenuOnlyPage from './components/menuOnlyPage/MenuOnlyPage';
 import {
   getWaiters, addWaiter, deleteWaiter,
   getCategories, addCategory, deleteCategory,
@@ -18,8 +19,9 @@ import {
   getPreparedItems, addPreparedItem, updatePreparedItem,
   deletePreparedItem, updatePreparedItemQuantity, seedPreparedItems,
   loginUser, seedUsers,
-  setAuthHeader  // 👈 import the header setter
+  setAuthHeader, changePassword
 } from './services/api';
+import ChangePasswordModal from './components/ChangePasswordModal';
 
 const theme = createTheme({
   palette: {
@@ -42,18 +44,38 @@ function App() {
   const [preparedItems, setPreparedItems] = useState([]);
   const [notification, setNotification] = useState(null);
 
-  // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState(null);
 
-  // Seed users on first run
+  // Landing Page & Menu Only state
+  const [showMenuOnly, setShowMenuOnly] = useState(false);
+
+  // Password Change State
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+
   useEffect(() => {
     seedUsers().catch(() => {});
   }, []);
 
+  // Load public data (categories + products) – always loaded
+  const loadPublicData = useCallback(async () => {
+    try {
+      const [cRes, pRes] = await Promise.all([
+        getCategories(),
+        getProducts(),
+      ]);
+      setCategories(cRes.data);
+      setProducts(pRes.data);
+    } catch (err) {
+      console.error('Error loading public data:', err);
+    }
+  }, []);
+
+  // Load full data (for authenticated users)
   const loadData = useCallback(async () => {
     try {
       const [wRes, cRes, pRes, oRes, piRes] = await Promise.all([
@@ -73,7 +95,12 @@ function App() {
     }
   }, []);
 
-  // Auto‑select waiter when logged in as waiter and waiters are loaded
+  // Load public data on mount
+  useEffect(() => {
+    loadPublicData();
+  }, [loadPublicData]);
+
+  // Auto-select waiter when logged in
   useEffect(() => {
     if (isAuthenticated && user?.role === 'waiter' && waiters.length > 0) {
       const matched = waiters.find(w =>
@@ -88,7 +115,7 @@ function App() {
     }
   }, [isAuthenticated, user, waiters]);
 
-  // Load data periodically when authenticated
+  // Load full data and poll when authenticated
   useEffect(() => {
     if (isAuthenticated) {
       loadData();
@@ -96,6 +123,10 @@ function App() {
       return () => clearInterval(interval);
     }
   }, [isAuthenticated, loadData]);
+
+  // ---------- NAVIGATION HANDLERS ----------
+  const handleViewMenu = () => setShowMenuOnly(true);
+  const handleBackToLanding = () => setShowMenuOnly(false);
 
   // ---------- AUTH HANDLERS ----------
   const handleOpenLogin = () => {
@@ -124,7 +155,6 @@ function App() {
         return;
       }
 
-      // 🔥 Set the auth header for all future requests
       setAuthHeader(userData.id);
 
       setUser(userData);
@@ -132,6 +162,9 @@ function App() {
       setActiveRole(userData.role);
       setLoginModalOpen(false);
       setLoginLoading(false);
+      
+      // Reset menu view when logged in
+      setShowMenuOnly(false);
       
       setNotification({
         waiterName: 'System',
@@ -144,22 +177,41 @@ function App() {
   };
 
   const handleLogout = () => {
-    // 🔥 Remove the auth header
     setAuthHeader(null);
     setIsAuthenticated(false);
     setUser(null);
     setActiveRole(null);
     setSelectedWaiterId(null);
+    setShowMenuOnly(false);
     setNotification({
       waiterName: 'System',
       message: '👋 Logged out successfully'
     });
   };
 
+  // ---------- PASSWORD CHANGE HANDLER ----------
+  const handleChangePassword = async (oldPassword, newPassword) => {
+    setChangePasswordLoading(true);
+    try {
+      await changePassword(oldPassword, newPassword);
+      setChangePasswordLoading(false);
+      setNotification({
+        waiterName: 'System',
+        message: '✅ Password changed successfully!'
+      });
+      return Promise.resolve();
+    } catch (err) {
+      setChangePasswordLoading(false);
+      throw err;
+    }
+  };
+
+  const handleOpenChangePassword = () => setChangePasswordOpen(true);
+  const handleCloseChangePassword = () => setChangePasswordOpen(false);
+
   // ---------- WAITER HANDLERS ----------
   const handleAddWaiter = async (data) => {
     try {
-      // The backend already creates the user – no extra call needed
       await addWaiter(data);
       await loadData();
       setNotification({
@@ -173,25 +225,21 @@ function App() {
   };
 
   const handleDeleteWaiter = async (id) => {
-  try {
-    console.log(`Deleting waiter with ID: ${id}`);
-    await deleteWaiter(id);
-    await loadData();
-    setNotification({
-      waiterName: 'System',
-      message: `🗑️ Waiter deleted successfully!`
-    });
-  } catch (err) {
-    const errorMsg = err.response?.data?.error || err.message;
-    alert(`Failed to delete waiter: ${errorMsg}`);
-    console.error('Delete error:', err);
-  }
-};;
+    try {
+      await deleteWaiter(id);
+      await loadData();
+      setNotification({
+        waiterName: 'System',
+        message: `🗑️ Waiter deleted successfully!`
+      });
+    } catch (err) {
+      const errorMsg = err.response?.data?.error || err.message;
+      alert(`Failed to delete waiter: ${errorMsg}`);
+      console.error('Delete error:', err);
+    }
+  };
 
-  // ---------- CATEGORY, PRODUCT, PREPARED ITEM, ORDER HANDLERS ----------
-  // (All other handlers remain exactly as before – they are already defined)
-  // For completeness, I include them all.
-
+  // ---------- CATEGORY HANDLERS ----------
   const handleAddCategory = async (data) => {
     try {
       await addCategory(data);
@@ -210,6 +258,7 @@ function App() {
     }
   };
 
+  // ---------- PRODUCT HANDLERS ----------
   const handleAddProduct = async (data) => {
     try {
       await addProduct(data);
@@ -228,6 +277,7 @@ function App() {
     }
   };
 
+  // ---------- PREPARED ITEMS HANDLERS ----------
   const handleAddPreparedItem = async (data) => {
     try {
       await addPreparedItem(data);
@@ -289,6 +339,7 @@ function App() {
     }
   };
 
+  // ---------- ORDER HANDLERS ----------
   const handleSubmitOrder = async (orderData) => {
     try {
       await createOrder(orderData);
@@ -331,10 +382,9 @@ function App() {
     }
   };
 
-  // Filter orders for active Waiter
+  // ---------- FILTERED DATA ----------
   const myOrders = orders.filter(o => o.waiterId === selectedWaiterId);
 
-  // Counts for badges
   const pendingCashierCount = orders.filter(o => o.status === 'PENDING_PAYMENT').length;
   const pendingBaristaCount = orders.filter(o =>
     o.status === 'DISPATCHED' && o.items?.some(i => i.targetDept === 'barista' && i.itemStatus !== 'ready')
@@ -360,6 +410,7 @@ function App() {
           user={user}
           onLogout={handleLogout}
           onOpenLogin={handleOpenLogin}
+          onOpenChangePassword={handleOpenChangePassword}
         />
 
         <LoginModal
@@ -370,6 +421,13 @@ function App() {
           error={loginError}
         />
 
+        <ChangePasswordModal
+          open={changePasswordOpen}
+          onClose={handleCloseChangePassword}
+          onChangePassword={handleChangePassword}
+          loading={changePasswordLoading}
+        />
+
         <NotificationBanner
           notification={notification}
           onClose={() => setNotification(null)}
@@ -377,7 +435,15 @@ function App() {
 
         <Box sx={{ pb: 6 }}>
           {!isAuthenticated ? (
-            <MenuDisplay categories={categories} products={products} />
+            showMenuOnly ? (
+              <MenuOnlyPage 
+                categories={categories} 
+                products={products} 
+                onBack={handleBackToLanding}
+              />
+            ) : (
+              <LandingPage onViewMenu={handleViewMenu} />
+            )
           ) : (
             <>
               {activeRole === 'admin' && (

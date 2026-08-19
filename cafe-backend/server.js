@@ -1,24 +1,25 @@
 require('dotenv').config();
+const sharp = require('sharp');
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const { Sequelize, DataTypes, Op } = require('sequelize');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 
-// Ensure uploads folder exists
+// ---------- ENSURE UPLOADS FOLDER EXISTS ----------
 const uploadDir = 'uploads';
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
-// Configure storage
+// ---------- MULTER CONFIGURATION ----------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
@@ -29,9 +30,9 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (allowedTypes.includes(file.mimetype)) {
@@ -126,13 +127,13 @@ initializeSequelize()
 function defineModels(sequelize) {
   const { DataTypes } = require('sequelize');
 
-  // ---------- USER MODEL (For Authentication) ----------
+  // ---------- USER MODEL ----------
   global.User = sequelize.define('User', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     username: { type: DataTypes.STRING, allowNull: false, unique: true },
     password: { type: DataTypes.STRING, allowNull: false },
-    role: { 
-      type: DataTypes.ENUM('admin', 'waiter', 'cashier', 'kitchen', 'barista'), 
+    role: {
+      type: DataTypes.ENUM('admin', 'waiter', 'cashier', 'kitchen', 'barista'),
       allowNull: false,
       defaultValue: 'waiter'
     },
@@ -149,6 +150,7 @@ function defineModels(sequelize) {
     isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
   }, { timestamps: true });
 
+  // ---------- CATEGORY MODEL ----------
   global.Category = sequelize.define('Category', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     name: { type: DataTypes.STRING, allowNull: false },
@@ -156,16 +158,19 @@ function defineModels(sequelize) {
     targetDept: { type: DataTypes.STRING, defaultValue: 'kitchen' }
   }, { timestamps: true });
 
+  // ---------- PRODUCT MODEL ----------
   global.Product = sequelize.define('Product', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     name: { type: DataTypes.STRING, allowNull: false },
     description: DataTypes.TEXT,
     price: { type: DataTypes.FLOAT, allowNull: false },
     image: DataTypes.STRING,
+    categoryId: { type: DataTypes.INTEGER, allowNull: false },
     targetDept: { type: DataTypes.STRING, defaultValue: 'kitchen' },
     isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true }
   }, { timestamps: true });
 
+  // ---------- ORDER MODEL ----------
   global.Order = sequelize.define('Order', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     waiterId: { type: DataTypes.INTEGER, allowNull: false },
@@ -179,12 +184,14 @@ function defineModels(sequelize) {
     completedAt: DataTypes.DATE
   }, { timestamps: true });
 
+  // ---------- SETTING MODEL ----------
   global.CafeSetting = sequelize.define('CafeSetting', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     key: { type: DataTypes.STRING, allowNull: false, unique: true },
     value: { type: DataTypes.STRING, allowNull: false }
   }, { timestamps: true });
 
+  // ---------- PREPARED ITEM MODEL ----------
   global.PreparedItem = sequelize.define('PreparedItem', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     name: { type: DataTypes.STRING, allowNull: false },
@@ -193,6 +200,7 @@ function defineModels(sequelize) {
     quantity: { type: DataTypes.INTEGER, defaultValue: 0 },
     unit: { type: DataTypes.STRING, defaultValue: 'piece' },
     image: DataTypes.STRING,
+    categoryId: { type: DataTypes.INTEGER, allowNull: false },
     isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true },
     preparationDate: DataTypes.DATE,
     expiryDate: DataTypes.DATE
@@ -201,10 +209,10 @@ function defineModels(sequelize) {
   // ---------- RELATIONSHIPS ----------
   Waiter.belongsTo(User, { foreignKey: 'userId' });
   User.hasOne(Waiter, { foreignKey: 'userId' });
-  
+
   Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'categoryInfo' });
   Category.hasMany(Product, { foreignKey: 'categoryId' });
-  
+
   PreparedItem.belongsTo(Category, { foreignKey: 'categoryId', as: 'categoryInfo' });
   Category.hasMany(PreparedItem, { foreignKey: 'categoryId' });
 
@@ -237,7 +245,6 @@ function setupRoutes(sequelize) {
   const { User, Waiter, Category, Product, Order, CafeSetting, PreparedItem } = global;
 
   // ============ AUTH ENDPOINTS ============
-  // Seed default admin user (only first time)
   app.post('/api/auth/seed', async (req, res) => {
     try {
       const adminExists = await User.findOne({ where: { username: 'admin' } });
@@ -258,7 +265,6 @@ function setupRoutes(sequelize) {
     }
   });
 
-  // ---------- LOGIN ENDPOINT (with debug logs) ----------
   app.post('/api/auth/login', async (req, res) => {
     try {
       const { username, password } = req.body;
@@ -292,7 +298,6 @@ function setupRoutes(sequelize) {
     }
   });
 
-  // Change own password (authenticated user)
   app.put('/api/auth/change-password', authenticate, async (req, res) => {
     try {
       const { oldPassword, newPassword } = req.body;
@@ -313,7 +318,7 @@ function setupRoutes(sequelize) {
     }
   });
 
-  // ============ USER MANAGEMENT (Admin only) ============
+  // ============ USER MANAGEMENT ============
   app.get('/api/users', authenticate, isAdmin, async (req, res) => {
     try {
       const users = await User.findAll({
@@ -402,17 +407,17 @@ function setupRoutes(sequelize) {
 
   // ============ WAITER ENDPOINTS ============
   app.get('/api/waiters', authenticate, async (req, res) => {
-  try {
-    const waiters = await Waiter.findAll({
-      include: [{ model: User, attributes: ['id', 'username', 'isActive'] }],
-      order: [['id', 'ASC']]
-    });
-    res.json(waiters);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-  // ---------- CREATE WAITER (with debug logs) ----------
+    try {
+      const waiters = await Waiter.findAll({
+        include: [{ model: User, attributes: ['id', 'username', 'isActive'] }],
+        order: [['id', 'ASC']]
+      });
+      res.json(waiters);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/waiters', authenticate, isAdmin, async (req, res) => {
     try {
       const { name, code, username, password } = req.body;
@@ -423,7 +428,6 @@ function setupRoutes(sequelize) {
         return res.status(400).json({ error: 'Name, code, username, password required' });
       }
 
-      // Check if username already exists
       const existing = await User.findOne({ where: { username } });
       if (existing) {
         console.log(`❌ Username "${username}" already exists`);
@@ -477,24 +481,22 @@ function setupRoutes(sequelize) {
   });
 
   app.delete('/api/waiters/:id', authenticate, isAdmin, async (req, res) => {
-  try {
-    const waiter = await Waiter.findByPk(req.params.id);
-    if (!waiter) return res.status(404).json({ error: 'Waiter not found' });
+    try {
+      const waiter = await Waiter.findByPk(req.params.id);
+      if (!waiter) return res.status(404).json({ error: 'Waiter not found' });
 
-    // Permanently delete the associated user
-    if (waiter.userId) {
-      await User.destroy({ where: { id: waiter.userId } });
+      if (waiter.userId) {
+        await User.destroy({ where: { id: waiter.userId } });
+      }
+
+      await waiter.destroy();
+      res.json({ message: 'Waiter permanently deleted' });
+    } catch (err) {
+      console.error('Error deleting waiter:', err);
+      res.status(500).json({ error: err.message });
     }
+  });
 
-    // Permanently delete the waiter
-    await waiter.destroy();
-
-    res.json({ message: 'Waiter permanently deleted' });
-  } catch (err) {
-    console.error('Error deleting waiter:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
   // ============ CATEGORY ENDPOINTS ============
   app.get('/api/categories', async (req, res) => {
     try {
@@ -552,38 +554,86 @@ function setupRoutes(sequelize) {
   });
 
   app.post('/api/products', authenticate, isAdmin, upload.single('image'), async (req, res) => {
-  try {
-    const productData = JSON.parse(JSON.stringify(req.body));
-    
-    // If file uploaded, save the file path
-    if (req.file) {
-      productData.image = `/uploads/${req.file.filename}`;
+    try {
+      const productData = JSON.parse(JSON.stringify(req.body));
+
+      if (req.file) {
+        const originalPath = req.file.path;
+        const filename = req.file.filename;
+        const ext = path.extname(filename);
+        const baseName = path.basename(filename, ext);
+        const resizedFilename = `${baseName}-resized${ext}`;
+        const resizedPath = path.join('uploads', resizedFilename);
+
+        await sharp(originalPath)
+          .resize(200, 200, {
+            fit: 'contain',
+            background: { r: 255, g: 255, b: 255, alpha: 1 }
+          })
+          .toFile(resizedPath);
+
+        fs.unlinkSync(originalPath);
+        productData.image = `/uploads/${resizedFilename}`;
+      }
+
+      const product = await Product.create(productData);
+      res.status(201).json(product);
+    } catch (err) {
+      console.error('Error creating product:', err);
+      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      res.status(400).json({ error: err.message });
     }
-    
-    const product = await Product.create(productData);
-    res.status(201).json(product);
-  } catch (err) {
-    console.error('Error creating product:', err);
-    res.status(400).json({ error: err.message });
-  }
-});app.put('/api/products/:id', authenticate, isAdmin, upload.single('image'), async (req, res) => {
-  try {
-    const productData = JSON.parse(JSON.stringify(req.body));
-    if (req.file) {
-      productData.image = `/uploads/${req.file.filename}`;
+  });
+
+  app.put('/api/products/:id', authenticate, isAdmin, upload.single('image'), async (req, res) => {
+    try {
+      const productData = JSON.parse(JSON.stringify(req.body));
+
+      if (req.file) {
+        const originalPath = req.file.path;
+        const filename = req.file.filename;
+        const ext = path.extname(filename);
+        const baseName = path.basename(filename, ext);
+        const resizedFilename = `${baseName}-resized${ext}`;
+        const resizedPath = path.join('uploads', resizedFilename);
+
+        await sharp(originalPath)
+          .resize(200, 200, {
+            fit: 'contain',
+            background: { r: 255, g: 255, b: 255, alpha: 1 }
+          })
+          .toFile(resizedPath);
+
+        fs.unlinkSync(originalPath);
+        productData.image = `/uploads/${resizedFilename}`;
+      }
+
+      await Product.update(productData, { where: { id: req.params.id } });
+      const updated = await Product.findByPk(req.params.id);
+      res.json(updated);
+    } catch (err) {
+      console.error('Error updating product:', err);
+      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      res.status(400).json({ error: err.message });
     }
-    await Product.update(productData, { where: { id: req.params.id } });
-    const updated = await Product.findByPk(req.params.id);
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+  });
+
   app.delete('/api/products/:id', authenticate, isAdmin, async (req, res) => {
     try {
-      await Product.destroy({ where: { id: req.params.id } });
-      res.json({ message: 'Product deleted' });
+      const product = await Product.findByPk(req.params.id);
+      if (!product) return res.status(404).json({ error: 'Product not found' });
+
+      if (product.image) {
+        const imagePath = path.join('uploads', path.basename(product.image));
+        if (fs.existsSync(imagePath)) {
+          fs.unlinkSync(imagePath);
+        }
+      }
+
+      await product.destroy();
+      res.json({ message: 'Product deleted successfully' });
     } catch (err) {
+      console.error('Error deleting product:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -829,6 +879,7 @@ function setupRoutes(sequelize) {
         { name: 'Iced Tea', price: 80, quantity: 12, unit: 'glass', categoryId: drinkCategory[0].id },
         { name: 'Lemonade', price: 90, quantity: 10, unit: 'glass', categoryId: drinkCategory[0].id }
       ];
+
       const created = await PreparedItem.bulkCreate(items);
       const allItems = await PreparedItem.findAll({
         where: { id: created.map(item => item.id) },
@@ -846,6 +897,7 @@ function setupRoutes(sequelize) {
         }
       });
     } catch (err) {
+      console.error('Error seeding prepared items:', err);
       res.status(400).json({ error: err.message });
     }
   });
